@@ -1,5 +1,11 @@
 """Offline unit tests for ytm-winamp core helpers (no network, no Winamp)."""
-from ytm_winamp.resolver import Track, is_url
+import os
+
+import pytest
+
+from ytm_winamp import server
+from ytm_winamp.resolver import DownloadError, Track, is_url, liked_songs
+from ytm_winamp.server import TrackCache
 from ytm_winamp.winamp import write_playlist
 
 
@@ -31,3 +37,63 @@ def test_write_playlist():
     assert "#EXTINF:-1,Song Two" in text
     assert "http://127.0.0.1:8797/stream/abcdefghijk.mp3" in text
     assert "http://127.0.0.1:8797/stream/klmnopqrstu.mp3" in text
+
+
+def _make_ready(cache: TrackCache, vid: str, mtime: float = 0.0) -> None:
+    p = cache.mp3_path(vid)
+    p.write_bytes(b"mp3data")
+    if mtime:
+        os.utime(p, (mtime, mtime))
+    cache.done_path(vid).touch()
+
+
+def test_cache_ready_requires_done_marker(tmp_path):
+    c = TrackCache(tmp_path, start_worker=False)
+    vid = "abcdefghijk"
+    assert not c.is_ready(vid)
+    c.mp3_path(vid).write_bytes(b"partial")
+    assert not c.is_ready(vid)  # download in progress: mp3 but no marker
+    c.done_path(vid).touch()
+    assert c.is_ready(vid)
+
+
+def test_cache_prefetch_skips_ready_and_clears_failures(tmp_path):
+    import time
+
+    c = TrackCache(tmp_path, start_worker=False)
+    _make_ready(c, "aaaaaaaaaaa")
+    c._failed["bbbbbbbbbbb"] = time.time()
+    assert c.recently_failed("bbbbbbbbbbb")
+    c.prefetch(["aaaaaaaaaaa", "bbbbbbbbbbb"])
+    assert c._queue == ["bbbbbbbbbbb"]  # ready track skipped
+    assert not c.recently_failed("bbbbbbbbbbb")  # retry window cleared
+
+
+def test_cache_ensure_jumps_queue_front(tmp_path):
+    c = TrackCache(tmp_path, start_worker=False)
+    c.prefetch(["aaaaaaaaaaa", "bbbbbbbbbbb"])
+    c.ensure("bbbbbbbbbbb")
+    assert c._queue[0] == "bbbbbbbbbbb"
+
+
+def test_cache_in_progress(tmp_path):
+    c = TrackCache(tmp_path, start_worker=False)
+    assert not c.in_progress("aaaaaaaaaaa")
+    c.prefetch(["aaaaaaaaaaa"])
+    assert c.in_progress("aaaaaaaaaaa")
+
+
+def test_cache_eviction_keeps_newest(tmp_path):
+    c = TrackCache(tmp_path, start_worker=False)
+    for i in range(server.MAX_CACHE_FILES + 2):
+        _make_ready(c, f"vid{i:08d}"[:11], mtime=1000 + i)
+    c._evict()
+    remaining = sorted(f.stem for f in tmp_path.glob("*.mp3"))
+    assert len(remaining) == server.MAX_CACHE_FILES
+    assert "vid00000000" not in remaining
+    assert "vid00000001" not in remaining
+
+
+def test_liked_songs_missing_auth_file(tmp_path):
+    with pytest.raises(DownloadError, match="auth not found"):
+        liked_songs(auth=str(tmp_path / "nope.json"))

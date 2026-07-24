@@ -1,6 +1,8 @@
 """Winamp integration: locate the player, manage the bridge, enqueue playlists."""
 from __future__ import annotations
 
+import http.client
+import json
 import os
 import subprocess
 import sys
@@ -75,9 +77,24 @@ def write_playlist(tracks: list[Track], port: int = DEFAULT_PORT) -> Path:
     return Path(name)
 
 
+def prefetch(vids: list[str], port: int = DEFAULT_PORT) -> None:
+    """Ask the bridge to start downloading tracks; best-effort."""
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("POST", "/prefetch", body=json.dumps(vids),
+                     headers={"Content-Type": "application/json"})
+        conn.getresponse().read()
+        conn.close()
+    except OSError:
+        pass
+
+
 def play(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
     if not tracks:
         raise WinampError("nothing to play")
     ensure_server(port)
+    # very long videos (mixes, compilations) are fetched on demand instead:
+    # background-prefetching one would starve the tracks behind it
+    prefetch([t.video_id for t in tracks if not t.duration or t.duration <= 900], port)
     playlist = write_playlist(tracks, port)
     subprocess.Popen([str(find_winamp()), str(playlist)])

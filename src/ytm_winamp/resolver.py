@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlparse
 
 from yt_dlp import YoutubeDL
@@ -61,3 +62,38 @@ def resolve(url: str) -> list[Track]:
     if entries:
         return [_to_track(e) for e in entries if e]
     return [_to_track(info)]
+
+
+DEFAULT_AUTH_PATH = Path.home() / ".ytm-winamp" / "ytmusic.json"
+
+_AUTH_HELP = """\
+YouTube Music auth not found at {path}.
+One-time setup — run ONE of these and move the resulting file to {path}:
+  ytmusicapi oauth     (recommended; needs a Google Cloud OAuth client,
+                        see ytmusicapi.readthedocs.io)
+  ytmusicapi browser   (paste request headers copied from music.youtube.com)
+"""
+
+
+def liked_songs(auth: str | None = None, limit: int = 250) -> list[Track]:
+    """Fetch the user's YouTube Music liked songs (requires ytmusicapi auth)."""
+    try:
+        from ytmusicapi import YTMusic
+    except ImportError as exc:
+        raise DownloadError(
+            "ytmusicapi is not installed; run: pip install ytmusicapi"
+        ) from exc
+    path = Path(auth) if auth else DEFAULT_AUTH_PATH
+    if not path.exists():
+        raise DownloadError(_AUTH_HELP.format(path=path))
+    resp = YTMusic(str(path)).get_liked_songs(limit=limit)
+    tracks = []
+    for e in resp.get("tracks", []):
+        artists = ", ".join(a.get("name", "") for a in e.get("artists") or [])
+        tracks.append(Track(
+            video_id=e["videoId"],
+            title=e.get("title") or e["videoId"],
+            uploader=artists,
+            duration=int(e.get("duration_seconds") or 0),
+        ))
+    return tracks
