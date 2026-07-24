@@ -31,8 +31,12 @@ pipx install .
 ## Usage
 
 ```sh
-# play the top search hit
+# queue the top 5 search hits and play the best one
+# (so Winamp's next/previous buttons have somewhere to go)
 ytm-winamp play cheri cheri lady
+
+# or just the top hit
+ytm-winamp play cheri cheri lady -n 1
 
 # play a specific video (YouTube or YouTube Music URL)
 ytm-winamp play "https://music.youtube.com/watch?v=eNvUS-6PTbs"

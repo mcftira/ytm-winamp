@@ -1,3 +1,3 @@
 """ytm-winamp: play YouTube Music in classic Winamp through a local MP3 bridge."""
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"

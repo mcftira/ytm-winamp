@@ -12,7 +12,9 @@ def _cmd_play(args) -> int:
     if resolver.is_url(query):
         tracks = resolver.resolve(query)
     else:
-        tracks = resolver.search(query, count=1)
+        # queue the top search hits so Winamp's next/previous buttons
+        # actually have somewhere to go, like a YouTube Music radio queue
+        tracks = resolver.search(query, count=args.count)
     if not tracks:
         print("no tracks found", file=sys.stderr)
         return 1
@@ -20,7 +22,7 @@ def _cmd_play(args) -> int:
     if len(tracks) == 1:
         print(f"playing in Winamp: {tracks[0].display}")
     else:
-        print(f"playing in Winamp: {tracks[0].display} (+{len(tracks) - 1} more tracks)")
+        print(f"playing in Winamp: {tracks[0].display} (+{len(tracks) - 1} more in queue)")
     return 0
 
 
@@ -51,6 +53,8 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("play", help="play a search query, video URL or playlist URL")
     p.add_argument("query", nargs="+", help="search words or a YouTube/YouTube Music URL")
+    p.add_argument("-n", "--count", type=int, default=5,
+                   help="search: queue this many top results (default 5)")
     p.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
     p.set_defaults(func=_cmd_play)
 
