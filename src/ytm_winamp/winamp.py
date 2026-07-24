@@ -52,7 +52,7 @@ def ensure_server(port: int = DEFAULT_PORT) -> None:
     )
     subprocess.Popen(
         [sys.executable, "-m", "ytm_winamp.server", "--port", str(port)],
-        stdout=log_file, stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL, stdout=log_file, stderr=subprocess.STDOUT,
         creationflags=flags, close_fds=True,
     )
     deadline = time.time() + 15

@@ -80,13 +80,20 @@ class BridgeHandler(BaseHTTPRequestHandler):
             ytdlp.kill()
 
 
+class BridgeServer(ThreadingHTTPServer):
+    daemon_threads = True
+    # http.server enables SO_REUSEADDR by default, which on Windows lets a
+    # second instance silently bind the same port and steal connections.
+    # Refuse to double-bind instead: only one bridge may ever serve a port.
+    allow_reuse_address = False
+
+
 def run(port: int = DEFAULT_PORT) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     for tool in ("yt-dlp", "ffmpeg"):
         if not shutil.which(tool):
             raise SystemExit(f"error: {tool!r} not found on PATH")
-    server = ThreadingHTTPServer(("127.0.0.1", port), BridgeHandler)
-    server.daemon_threads = True
+    server = BridgeServer(("127.0.0.1", port), BridgeHandler)
     log.info("ytm-winamp bridge listening on http://127.0.0.1:%d", port)
     try:
         server.serve_forever()
