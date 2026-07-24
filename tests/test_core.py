@@ -3,10 +3,92 @@ import os
 
 import pytest
 
-from ytm_winamp import server
+from ytm_winamp import charts, era, server
 from ytm_winamp.resolver import DownloadError, Track, is_url, liked_songs
 from ytm_winamp.server import TrackCache, icy_block
 from ytm_winamp.winamp import write_playlist
+
+CHART_HTML = """
+<html><body>
+<table class="wikitable">
+<tr><th>Issue date</th><th>Song</th><th>Artist</th><th>Ref.</th></tr>
+<tr><td>5 January</td><td>"It's Like That"</td><td>Run-D.M.C.</td><td>[3]</td></tr>
+<tr><td>12 January</td><td>[5]</td><td>[6]</td><td>[7]</td></tr>
+<tr><td>19 January</td><td>"Believe" †</td><td>Cher</td><td>[8]</td></tr>
+</table>
+<table class="wikitable">
+<tr><th>Foo</th><th>Bar</th></tr>
+<tr><td>1</td><td>2</td></tr>
+</table>
+</body></html>
+"""
+
+
+def test_parse_chart_page_forward_fills_and_dedups():
+    pairs = charts.parse_chart_page(CHART_HTML)
+    assert pairs == [("It's Like That", "Run-D.M.C."), ("Believe", "Cher")]
+
+
+def test_chart_clean_strips_refs_and_quotes():
+    assert charts._clean('" Believe " [12] †') == "Believe"
+    assert charts._clean("[5]") == ""
+
+
+def test_select_queries_global_only():
+    import random
+
+    queries, note = era.select_queries(20, shuffle=True, local=False,
+                                       rng=random.Random(42))
+    assert len(queries) == 20
+    assert note == "global hits only"
+
+
+def test_select_queries_mixes_local_hits(monkeypatch):
+    import random
+
+    local = [f"Local Artist{i} - Song{i}" for i in range(50)]
+    monkeypatch.setattr(charts, "detect_country", lambda: ("DE", "Germany"))
+    monkeypatch.setattr(charts, "fetch_chart_queries",
+                        lambda cc, name=None: local)
+    queries, note = era.select_queries(20, shuffle=True, rng=random.Random(42))
+    assert note == "mixed with Germany number-one hits"
+    assert len(queries) == 20
+    n_local = sum(1 for q in queries if q.startswith("Local Artist"))
+    assert n_local == round(20 * era.LOCAL_SHARE)
+
+
+def test_select_queries_graceful_when_country_unknown(monkeypatch):
+    import random
+
+    monkeypatch.setattr(charts, "detect_country", lambda: (None, None))
+    queries, note = era.select_queries(10, shuffle=True, rng=random.Random(1))
+    assert len(queries) == 10
+    assert "global hits only" in note
+
+
+SLAGER_HTML = """
+<html><body><table>
+<tr>
+  <td class="no_sor">2.</td>
+  <td class="hetek_szama_sor">42</td>
+  <td class="csucs_sor">1</td>
+  <td class="lemez_sor2"><span class="eloado">Dido</span><br />White Flag<br />
+    <span class="kiado_sor">(BMG)</span></td>
+</tr>
+<tr>
+  <td class="no_sor">5.</td>
+  <td class="hetek_szama_sor">39</td>
+  <td class="csucs_sor">2</td>
+  <td class="lemez_sor2"><span class="eloado">T.N.T.</span><br />Híd a folyót<br />
+    <span class="kiado_sor">(Magneoton)</span></td>
+</tr>
+</table></body></html>
+"""
+
+
+def test_parse_slagerlistak_page():
+    pairs = charts.parse_slagerlistak_page(SLAGER_HTML)
+    assert pairs == [("White Flag", "Dido"), ("Híd a folyót", "T.N.T.")]
 
 
 def test_track_display():

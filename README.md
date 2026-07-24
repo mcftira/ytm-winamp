@@ -37,11 +37,13 @@ pipx inject ytm-winamp ytmusicapi   # optional, for liked-songs support
 ## Usage
 
 ```sh
-# default: play your YouTube Music liked songs (needs one-time auth, see below)
+# default: the Winamp-era radio — a shuffled queue of 1995-2005 hits,
+# mixed with number-one hits from your own country (auto-detected)
 ytm-winamp
 
-# ...shuffled
-ytm-winamp liked --shuffle
+# same, but a specific country, or purely global hits
+ytm-winamp era --country DE
+ytm-winamp era --global-only
 
 # queue the top 5 search hits and play the best one
 # (so Winamp's next/previous buttons have somewhere to go)
@@ -56,6 +58,9 @@ ytm-winamp play "https://music.youtube.com/watch?v=eNvUS-6PTbs"
 # play a whole playlist
 ytm-winamp play "https://music.youtube.com/playlist?list=PL..."
 
+# your YouTube Music liked songs (needs one-time auth, see below)
+ytm-winamp liked --shuffle
+
 # list search results with URLs to pick from
 ytm-winamp search modern talking -n 10
 
@@ -66,6 +71,22 @@ ytm-winamp serve
 On `play`, the bridge server starts itself in the background (once) and Winamp
 opens with a playlist pointing at `127.0.0.1`. Track titles show up in the
 Winamp playlist via `#EXTINF`, as nature intended.
+
+## The era radio, localized
+
+Bare `ytm-winamp` (or `ytm-winamp era`) builds a radio queue of Winamp-era
+hits (~1995-2005). Roughly 40% of it is localized: your country is detected
+from your IP (cached in `~/.ytm-winamp/country.json`) and your country's
+number-one hits from those years are mixed in with the worldwide
+chart-toppers that every 2000s playlist had.
+
+Local chart data is fetched, never guessed — from Wikipedia's national
+number-one lists (CC-BY-SA), currently verified for
+**DE, AT, CH, IT, ES, NL, PL, FR, IE**, plus **Hungary** via
+[slagerlistak.hu](https://slagerlistak.hu) year-end Rádiós Top 40 charts.
+Other countries fall back to the global list with a note on the console.
+Adding a country is a one-line page-pattern in `charts.py`
+(`COUNTRY_SOURCES`) — PRs welcome.
 
 ## Liked songs: one-time auth setup
 
@@ -90,12 +111,15 @@ Pass a different location with `ytm-winamp liked --auth <path>`.
 | Bridge log     | `%TEMP%\ytm-winamp-bridge.log`                               |
 | Track cache    | `%TEMP%\ytm-winamp-cache` (up to 32 tracks, LRU)             |
 | YT Music auth  | `%USERPROFILE%\.ytm-winamp\ytmusic.json`                     |
+| Era/geo data   | `%USERPROFILE%\.ytm-winamp\` (`country.json`, `charts_*.json`, `era_cache.json`) |
 
 ## Roadmap
 
+- [x] Winamp-era radio with country-localized charts
+- [x] ICY stream metadata so the title bar updates per track
 - [x] YouTube Music liked songs via `ytmusicapi` OAuth/browser auth
+- [ ] More countries in `COUNTRY_SOURCES` (PRs welcome)
 - [ ] Your other YouTube Music playlists by name
-- [ ] ICY stream metadata so the title bar updates per track
 - [ ] System tray controller
 - [ ] Seeking support (needs Range requests in the bridge)
 

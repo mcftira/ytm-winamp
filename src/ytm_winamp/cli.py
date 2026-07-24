@@ -5,7 +5,7 @@ import argparse
 import random
 import sys
 
-from . import __version__, resolver, winamp
+from . import __version__, era, resolver, winamp
 
 
 def _play_tracks(tracks, port: int) -> int:
@@ -28,6 +28,14 @@ def _cmd_play(args) -> int:
         # queue the top search hits so Winamp's next/previous buttons
         # actually have somewhere to go, like a YouTube Music radio queue
         tracks = resolver.search(query, count=args.count)
+    return _play_tracks(tracks, args.port)
+
+
+def _cmd_era(args) -> int:
+    print("resolving Winamp-era tracks...", file=sys.stderr)
+    tracks, note = era.era_tracks(count=args.count, shuffle=not args.no_shuffle,
+                                  country=args.country, local=not args.global_only)
+    print(f"era radio: {note}", file=sys.stderr)
     return _play_tracks(tracks, args.port)
 
 
@@ -69,6 +77,19 @@ def main(argv=None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
+    e = sub.add_parser("era", help="play a shuffled Winamp-era hits radio (default)")
+    e.add_argument("-n", "--count", type=int, default=25,
+                   help="how many era tracks to queue (default 25)")
+    e.add_argument("--no-shuffle", action="store_true",
+                   help="keep the curated order instead of shuffling")
+    e.add_argument("--country",
+                   help="mix in number-one hits from this country "
+                        "(code or name; default: auto-detect from your IP)")
+    e.add_argument("--global-only", action="store_true",
+                   help="skip local charts, play the global hit parade only")
+    e.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
+    e.set_defaults(func=_cmd_era)
+
     p = sub.add_parser("play", help="play a search query, video URL or playlist URL")
     p.add_argument("query", nargs="+", help="search words or a YouTube/YouTube Music URL")
     p.add_argument("-n", "--count", type=int, default=5,
@@ -76,7 +97,8 @@ def main(argv=None) -> int:
     p.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
     p.set_defaults(func=_cmd_play)
 
-    lk = sub.add_parser("liked", help="play your YouTube Music liked songs (default)")
+    lk = sub.add_parser("liked", help="play your YouTube Music liked songs "
+                                      "(needs ytmusicapi auth)")
     lk.add_argument("--auth", help="path to the ytmusicapi auth file")
     lk.add_argument("--limit", type=int, default=250,
                     help="how many liked songs to queue (default 250)")
@@ -95,8 +117,8 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
     if args.command is None:
-        # bare `ytm-winamp`: the default queue is the user's liked songs
-        args = parser.parse_args(["liked"])
+        # bare `ytm-winamp`: the default queue is the Winamp-era radio
+        args = parser.parse_args(["era"])
     try:
         return args.func(args)
     except (winamp.WinampError, resolver.DownloadError) as exc:
