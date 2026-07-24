@@ -3,7 +3,10 @@ import os
 
 import pytest
 
-from ytm_winamp import charts, era, installer, server
+import sys
+
+from ytm_winamp import bins, charts, era, installer, server
+from ytm_winamp.winamp import _server_argv
 from ytm_winamp.resolver import DownloadError, Track, is_url, liked_songs
 from ytm_winamp.server import TrackCache, icy_block
 from ytm_winamp.winamp import write_playlist
@@ -112,6 +115,37 @@ def test_ensure_skin_inserts_when_missing(tmp_path):
 def test_ensure_skin_without_ini(tmp_path):
     msg = installer.ensure_skin("Winamp Modern", tmp_path / "nope.ini")
     assert "no winamp.ini yet" in msg
+
+
+def test_find_tool_on_path(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda n: f"/usr/bin/{n}")
+    assert bins.find_tool("ffmpeg") == "/usr/bin/ffmpeg"
+
+
+def test_find_tool_local_bin(monkeypatch, tmp_path):
+    monkeypatch.setattr("shutil.which", lambda n: None)
+    monkeypatch.setattr(bins, "LOCAL_BIN", tmp_path)
+    (tmp_path / "yt-dlp.exe").write_bytes(b"x")
+    assert bins.find_tool("yt-dlp") == str(tmp_path / "yt-dlp.exe")
+
+
+def test_find_tool_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr("shutil.which", lambda n: None)
+    monkeypatch.setattr(bins, "LOCAL_BIN", tmp_path)
+    with pytest.raises(bins.ToolNotFound):
+        bins.find_tool("ffmpeg")
+
+
+def test_server_argv_normal(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    argv = _server_argv(8797)
+    assert argv[1:3] == ["-m", "ytm_winamp.server"]
+
+
+def test_server_argv_frozen(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    argv = _server_argv(8797)
+    assert argv[1] == "serve"
 
 
 def test_track_display():

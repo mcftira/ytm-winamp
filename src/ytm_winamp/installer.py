@@ -2,11 +2,12 @@
 
 The goal is that a new user can go from nothing to a playing Winamp with:
 
-    pipx install .
     ytm-winamp setup
     ytm-winamp
 
-Everything here is idempotent: whatever is already present is left alone.
+Winamp itself comes from winget; yt-dlp and ffmpeg are fetched as portable
+builds into ~/.ytm-winamp/bin, so no PATH surgery or admin rights are needed
+for them. Everything here is idempotent: whatever is present is left alone.
 """
 from __future__ import annotations
 
@@ -15,15 +16,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import bins
 from . import winamp as _winamp
 
 DEFAULT_SKIN = "Winamp Modern"
 
-# external tools, mapped to their winget package ids
-_TOOLS = [
-    ("yt-dlp", "yt-dlp.yt-dlp"),
-    ("ffmpeg", "Gyan.FFmpeg"),
-]
+_TOOLS = ["yt-dlp", "ffmpeg"]
 
 
 def _have_winget() -> bool:
@@ -40,21 +38,21 @@ def _winget_install(package_id: str) -> bool:
     return proc.returncode == 0
 
 
-def ensure_tool(name: str, winget_id: str) -> bool:
-    if shutil.which(name):
-        print(f"  {name}: found")
+def ensure_tool(name: str) -> bool:
+    try:
+        path = bins.find_tool(name)
+        print(f"  {name}: found at {path}")
         return True
-    if not _have_winget():
-        print(f"  {name}: MISSING and winget is unavailable;")
-        print(f"    install it manually and make sure it is on PATH")
+    except bins.ToolNotFound:
+        pass
+    try:
+        bins.download_tool(name)
+        bins.find_tool(name)
+        return True
+    except Exception as exc:
+        print(f"  {name}: download failed ({exc});")
+        print("    install it manually or re-run setup")
         return False
-    if _winget_install(winget_id) and shutil.which(name):
-        print(f"  {name}: installed")
-        return True
-    # winget may have installed it for a future PATH; warn but continue
-    print(f"  {name}: install attempted; if it is still not found, "
-          f"open a new terminal so PATH updates")
-    return shutil.which(name) is not None
 
 
 def ensure_winamp() -> bool:
@@ -112,8 +110,8 @@ def run_setup() -> int:
     print("ytm-winamp setup")
     ok = True
     ok = ensure_winamp() and ok
-    for name, winget_id in _TOOLS:
-        ok = ensure_tool(name, winget_id) and ok
+    for name in _TOOLS:
+        ok = ensure_tool(name) and ok
     print(" ", ensure_skin())
     if ok:
         print("\nall set — start the era radio with:  ytm-winamp")

@@ -20,24 +20,32 @@ URLs are resolved when a track is downloaded, not when it is enqueued.
 ## Requirements
 
 - Windows with [Winamp 5.x](https://www.winamp.com/player/) installed
-- Python 3.10+
-- [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on your PATH
-- [`ffmpeg`](https://ffmpeg.org/) on your PATH
+  (`ytm-winamp setup` installs it via winget)
+- Python 3.10+ — source installs only; the release exe is self-contained
+- yt-dlp and ffmpeg — fetched automatically by `ytm-winamp setup` when
+  missing (portable builds in `~/.ytm-winamp/bin`, PATH works too)
 - optional: [`ytmusicapi`](https://ytmusicapi.readthedocs.io) for playing
-  your YouTube Music liked songs (`pip install .[liked]`)
+  your YouTube Music liked songs (`pip install .[liked]`; bundled in the exe)
 
 ## Quick start
 
+1. Download **`ytm-winamp.exe`** from
+   [Releases](https://github.com/mcftira/ytm-winamp/releases) — no Python
+   needed.
+2. Run `ytm-winamp setup` — installs Winamp via winget, downloads portable
+   yt-dlp/ffmpeg into `%USERPROFILE%\.ytm-winamp\bin`, and sets the default
+   Winamp Modern theme.
+3. Run `ytm-winamp` — the era radio starts.
+
+### From source
+
 ```sh
 pipx install .
-ytm-winamp setup    # installs Winamp, yt-dlp and ffmpeg via winget,
-                    # and sets the default Winamp Modern theme
-ytm-winamp          # start the era radio
+ytm-winamp setup
+ytm-winamp
 ```
 
-Or by hand: `pip install .[liked]` plus the requirements below, and Winamp
-from [winamp.com](https://www.winamp.com/player/). The `setup` command is
-idempotent — anything already installed is left alone.
+The `setup` command is idempotent — anything already installed is left alone.
 
 ## Usage
 

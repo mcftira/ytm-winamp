@@ -41,6 +41,13 @@ def server_up(port: int = DEFAULT_PORT) -> bool:
         return False
 
 
+def _server_argv(port: int) -> list[str]:
+    """How to launch the bridge process, in frozen (PyInstaller) form or not."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "serve", "--port", str(port)]
+    return [sys.executable, "-m", "ytm_winamp.server", "--port", str(port)]
+
+
 def ensure_server(port: int = DEFAULT_PORT) -> None:
     """Start the bridge as a detached background process unless already running."""
     if server_up(port):
@@ -53,7 +60,7 @@ def ensure_server(port: int = DEFAULT_PORT) -> None:
         | subprocess.CREATE_NO_WINDOW
     )
     subprocess.Popen(
-        [sys.executable, "-m", "ytm_winamp.server", "--port", str(port)],
+        _server_argv(port),
         stdin=subprocess.DEVNULL, stdout=log_file, stderr=subprocess.STDOUT,
         creationflags=flags, close_fds=True,
     )

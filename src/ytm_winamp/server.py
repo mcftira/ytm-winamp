@@ -16,7 +16,6 @@ import argparse
 import json
 import logging
 import re
-import shutil
 import subprocess
 import tempfile
 import threading
@@ -24,6 +23,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+
+from .bins import find_tool
 
 DEFAULT_PORT = 8797
 _STREAM_RE = re.compile(r"^/stream/([A-Za-z0-9_-]{6,20})(?:\.mp3)?$")
@@ -157,11 +158,12 @@ class TrackCache:
         # ffmpeg writes the MP3 straight to disk; webm preferred because a
         # seek-free pipe cannot hold formats with a trailing index (m4a).
         ytdlp = subprocess.Popen(
-            ["yt-dlp", "-f", "bestaudio[ext=webm]/bestaudio", "--no-playlist",
-             "--no-warnings", "-o", "-", f"https://www.youtube.com/watch?v={vid}"],
+            [find_tool("yt-dlp"), "-f", "bestaudio[ext=webm]/bestaudio",
+             "--no-playlist", "--no-warnings", "-o", "-",
+             f"https://www.youtube.com/watch?v={vid}"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         ffmpeg = subprocess.Popen(
-            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            [find_tool("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",
              "-i", "pipe:0", "-vn", "-f", "mp3", "-b:a", "192k", str(mp3)],
             stdin=ytdlp.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         assert ytdlp.stdout is not None
@@ -327,8 +329,10 @@ class BridgeServer(ThreadingHTTPServer):
 def run(port: int = DEFAULT_PORT) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     for tool in ("yt-dlp", "ffmpeg"):
-        if not shutil.which(tool):
-            raise SystemExit(f"error: {tool!r} not found on PATH")
+        try:
+            find_tool(tool)
+        except Exception:
+            raise SystemExit(f"error: {tool!r} not found; run: ytm-winamp setup")
     server = BridgeServer(("127.0.0.1", port), BridgeHandler)
     server.cache = TrackCache()
     log.info("ytm-winamp bridge listening on http://127.0.0.1:%d (cache: %s)",
