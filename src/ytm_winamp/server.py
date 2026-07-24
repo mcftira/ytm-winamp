@@ -9,6 +9,10 @@ instead of waiting for a cold resolve on every track change.
 Track titles are injected into the stream as ICY (SHOUTcast-style) metadata
 when the player asks for it, so Winamp shows "Artist - Title" instead of the
 bare video id once a stream connects.
+
+Fully cached tracks answer HTTP Range requests (206/416) so Winamp's position
+slider can seek; ranges are never combined with ICY metadata, and tracks that
+are still downloading ignore Range headers entirely.
 """
 from __future__ import annotations
 
@@ -51,6 +55,38 @@ def icy_block(title: str | None) -> bytes:
     pad = 16 - (len(meta) % 16)
     meta += b"\x00" * pad
     return bytes([len(meta) // 16]) + meta
+
+
+def parse_range(header: str, size: int) -> tuple[int, int] | None:
+    """Parse a ``Range: bytes=...`` header into an inclusive (start, end) span.
+
+    ``end`` is clamped to the file. Returns None when the header is not a
+    single byte range or cannot be satisfied for a file of ``size`` bytes;
+    the caller answers 416 in that case.
+    """
+    if size <= 0:
+        return None
+    unit, _, spec = header.partition("=")
+    if unit.strip().lower() != "bytes" or "," in spec:
+        return None  # other range units, or multi-range (would need multipart)
+    first, sep, last = spec.strip().partition("-")
+    if not sep:
+        return None
+    try:
+        if first:  # bytes=start-end / bytes=start-
+            start = int(first)
+            end = int(last) if last else size - 1
+        else:      # bytes=-suffix: the last `suffix` bytes
+            length = int(last)
+            if length <= 0:
+                return None
+            start = max(0, size - length)
+            end = size - 1
+    except ValueError:
+        return None
+    if start < 0 or start >= size or start > end:
+        return None
+    return start, min(end, size - 1)
 
 
 class TrackCache:
@@ -277,6 +313,13 @@ class BridgeHandler(BaseHTTPRequestHandler):
             time.sleep(0.25)
         title = cache.title_for(vid).replace("'", " ")
         icy = self._wants_icy()
+        ready = cache.is_ready(vid)
+        range_header = self.headers.get("Range")
+        if ready and range_header:
+            # seeking needs a complete file, and a range response is plain
+            # MP3 bytes: never interleaved with ICY metadata blocks
+            self._stream_range(vid, mp3, mp3.stat().st_size, range_header)
+            return
         log.info("streaming %s (%s) to %s%s", vid, title, self.client_address,
                  " [icy]" if icy else "")
         self.send_response(200)
@@ -287,8 +330,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self.send_header("icy-br", "192")
             self.send_header("icy-name", title)
             # no Content-Length: interleaved metadata blocks shift the total
-        elif cache.is_ready(vid):  # complete file: Winamp gets a real length
+        elif ready:  # complete file: Winamp gets a real length
             self.send_header("Content-Length", str(mp3.stat().st_size))
+        if ready:  # tell Winamp the position slider can seek this track
+            self.send_header("Accept-Ranges", "bytes")
         self.end_headers()
         try:
             self._pump(vid, mp3, icy, title)
@@ -296,6 +341,43 @@ class BridgeHandler(BaseHTTPRequestHandler):
             # broken pipe / reset / abort: Winamp disconnects and reconnects
             # while buffering, which is normal for streaming clients
             log.info("client disconnected during %s", vid)
+
+    def _stream_range(self, vid: str, mp3: Path, size: int, header: str) -> None:
+        """Answer a Range request for a fully cached track (206 or 416)."""
+        span = parse_range(header, size)
+        if span is None:
+            log.info("unsatisfiable range %r for %s (%d bytes)", header, vid, size)
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        start, end = span
+        log.info("serving %s bytes %d-%d/%d to %s",
+                 vid, start, end, size, self.client_address)
+        self.send_response(206)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.end_headers()
+        try:
+            self._pump_range(mp3, start, end)
+        except OSError:
+            log.info("client disconnected during %s", vid)
+
+    def _pump_range(self, mp3: Path, start: int, end: int) -> None:
+        """Write the inclusive [start, end] slice of a complete file."""
+        with open(mp3, "rb") as f:
+            f.seek(start)
+            remaining = end - start + 1
+            while remaining > 0:
+                chunk = f.read(min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
 
     def _pump(self, vid: str, mp3: Path, icy: bool, title: str) -> None:
         with open(mp3, "rb") as f:

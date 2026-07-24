@@ -46,6 +46,25 @@ def _cmd_liked(args) -> int:
     return _play_tracks(tracks, args.port)
 
 
+def _cmd_mix(args) -> int:
+    query = " ".join(args.query)
+    candidates = resolver.search_playlists(query, count=5)
+    if not candidates:
+        print(f"no public playlists found for: {query}", file=sys.stderr)
+        return 1
+    if args.list:
+        for i, c in enumerate(candidates, 1):
+            count = c["track_count"] if c["track_count"] is not None else "?"
+            print(f"{i}. {c['name']} — {c['owner'] or 'unknown'} "
+                  f"({count} tracks)")
+        return 0
+    top = candidates[0]
+    tracks = resolver.playlist_tracks(top["id"], limit=args.count)
+    print(f"playlist: {top['name']} by {top['owner'] or 'unknown'}",
+          file=sys.stderr)
+    return _play_tracks(tracks, args.port)
+
+
 def _cmd_search(args) -> int:
     results = resolver.search(" ".join(args.query), count=args.count)
     for i, t in enumerate(results, 1):
@@ -60,6 +79,12 @@ def _cmd_setup(args) -> int:
     from . import installer
 
     return installer.run_setup(skin_only=args.skin_only)
+
+
+def _cmd_tray(args) -> int:
+    from . import tray
+
+    return tray.main()
 
 
 def _cmd_serve(args) -> int:
@@ -111,6 +136,20 @@ def main(argv=None) -> int:
     lk.add_argument("--shuffle", action="store_true", help="shuffle before queueing")
     lk.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
     lk.set_defaults(func=_cmd_liked)
+
+    m = sub.add_parser("mix", help="queue a public YouTube Music playlist "
+                                   "found by name (no auth needed)")
+    m.add_argument("query", nargs="+", help="playlist name to search for")
+    m.add_argument("-n", "--count", type=int, default=50,
+                   help="max tracks to queue from the playlist (default 50)")
+    m.add_argument("--list", action="store_true",
+                   help="list the top 5 matching playlists instead of playing")
+    m.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
+    m.set_defaults(func=_cmd_mix)
+
+    t = sub.add_parser("tray", help="run the system-tray controller "
+                                    "(icon + playback menu)")
+    t.set_defaults(func=_cmd_tray)
 
     st = sub.add_parser("setup", help="first run: install Winamp and "
                                       "dependencies, set default theme")

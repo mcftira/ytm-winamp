@@ -6,3 +6,4 @@ dist/
 *.log
 .pytest_cache/
 installer/
+*.spec

@@ -32,6 +32,9 @@
 | 🌍 **Localized to your country** | Your IP's country is auto-detected and ~40% of the queue is that country's **actual number-one hits** of the era — fetched from real chart archives, never guessed |
 | ⚡ **Snappy controls** | Upcoming tracks are prefetched and cached to disk; pressing **next** starts the next song in a fraction of a second |
 | 🏷️ **Real titles in Winamp** | ICY (SHOUTcast-style) metadata, so the title bar and playlist show `Artist – Title` like a proper radio |
+| ⏩ **Seeking** | The position slider works on cached tracks (HTTP Range requests) |
+| 🎧 **Public playlist radio** | `mix` queues any public YouTube Music playlist by name — no auth needed |
+| 🖥️ **System tray controller** | Now-playing menu, playback controls, era radio one click away |
 | 🎯 **Plays anything** | Search queries, video URLs, whole YouTube/YouTube Music playlists |
 | ❤️ **Liked songs** | Optional: your YouTube Music likes via [`ytmusicapi`](https://ytmusicapi.readthedocs.io) auth |
 | 📦 **Single-file exe** | No Python, no PATH surgery — download and go |
@@ -72,12 +75,15 @@ Local chart data sources:
 
 | Source | Countries | Notes |
 | --- | --- | --- |
-| Wikipedia national number-one lists (CC-BY-SA) | 🇩🇪 🇦🇹 🇨🇭 🇮🇹 🇪🇸 🇳🇱 🇵🇱 🇫🇷 🇮🇪 | `List of number-one hits of YYYY (…)` |
+| Wikipedia national number-one lists (CC-BY-SA) | 🇩🇪 🇦🇹 🇨🇭 🇮🇹 🇪🇸 🇳🇱 🇫🇷 🇮🇪 🇩🇰 🇫🇮 🇨🇦 🇯🇵 | Per-year lists, `List of number-one hits of YYYY (…)` style |
+| Wikipedia decade/all-time lists | 🇬🇧 🇳🇿 🇸🇪 🇳🇴 | Year-filtered while parsing |
+| Wikipedia year-end charts | 🇺🇸 🇦🇺 🇧🇪 | Billboard Hot 100 year-ends; ARIA year-end top 100; Ultratop Wallonia |
 | [slagerlistak.hu](https://slagerlistak.hu) | 🇭🇺 | Year-end Rádiós Top 40 charts |
 
-No list for your country yet? You get the global parade with a console note —
-and adding one is a one-line page pattern in
-[`charts.py`](src/ytm_winamp/charts.py). **PRs welcome.**
+That's **20 countries** and counting. No list for yours? You get the global
+parade with a console note — and adding a country is usually a one-line page
+pattern in [`charts.py`](src/ytm_winamp/charts.py) (`COUNTRY_SOURCES`).
+**PRs welcome.**
 
 ```sh
 ytm-winamp era --country DE     # force a country (code or name)
@@ -108,6 +114,8 @@ YouTube ───────────────▶ yt-dlp ──▶ ffmpeg
 | `ytm-winamp` | The era radio (same as `era`) |
 | `ytm-winamp era [--country X] [--global-only] [-n N]` | Era hits, optionally localized |
 | `ytm-winamp play <query or URL> [-n N]` | Search, video, or whole playlist |
+| `ytm-winamp mix <name> [--list] [-n N]` | Queue a public YouTube Music playlist found by name |
+| `ytm-winamp tray` | System-tray controller (now playing, playback controls) |
 | `ytm-winamp liked [--shuffle]` | Your YouTube Music liked songs ([auth needed](#-liked-songs-one-time-auth)) |
 | `ytm-winamp search <query> [-n N]` | List results with URLs |
 | `ytm-winamp setup` | First-run onboarding: Winamp + tools + theme |
@@ -150,10 +158,11 @@ Pass a different location with `ytm-winamp liked --auth <path>`.
 - [x] ICY stream titles
 - [x] Single-file exe + one-command setup
 - [x] YouTube Music liked songs
-- [ ] More countries in `COUNTRY_SOURCES`
-- [ ] YouTube Music playlists by name
-- [ ] System tray controller
-- [ ] Seeking (needs Range requests in the bridge)
+- [x] Public YouTube Music playlists by name (`mix`, no auth)
+- [x] System tray controller
+- [x] Seeking (HTTP Range in the bridge)
+- [ ] More countries in `COUNTRY_SOURCES` (PRs welcome)
+- [ ] winget package submission (draft manifests in `packaging/winget/`)
 
 ## ❓ FAQ
 

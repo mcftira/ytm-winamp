@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+PackageIdentifier: mcftira.ytm-winamp
+PackageVersion: 0.8.0
+PackageLocale: en-US
+Publisher: mcftira
+PublisherUrl: https://github.com/mcftira
+PackageName: ytm-winamp
+PackageUrl: https://github.com/mcftira/ytm-winamp
+License: MIT
+LicenseUrl: https://github.com/mcftira/ytm-winamp/blob/main/LICENSE
+Copyright: Copyright (c) 2026 Gabor Pikats
+CopyrightUrl: https://github.com/mcftira/ytm-winamp/blob/main/LICENSE
+ShortDescription: Play YouTube and YouTube Music audio in classic Winamp 5.x through a local HTTP bridge
+Description: |-
+  ytm-winamp streams YouTube and YouTube Music audio into classic Winamp 5.x
+  through a local HTTP bridge with ICY (SHOUTcast) title metadata.
+  One command queues a shuffled 1995-2005 hit parade mixed with your country's
+  number-one hits of the era; upcoming tracks are prefetched to a disk cache so
+  skipping is instant. It also plays search queries, video URLs, whole
+  playlists, and (optionally) your YouTube Music likes.
+Moniker: ytm-winamp
+Tags:
+- winamp
+- youtube
+- youtube-music
+- music
+- radio
+- streaming
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0

@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
-__all__ = ["Track", "DownloadError", "is_url", "search", "resolve"]
+__all__ = ["Track", "DownloadError", "is_url", "search", "resolve",
+           "search_playlists", "playlist_tracks"]
 
 
 @dataclass
@@ -93,6 +94,76 @@ def liked_songs(auth: str | None = None, limit: int = 250) -> list[Track]:
         tracks.append(Track(
             video_id=e["videoId"],
             title=e.get("title") or e["videoId"],
+            uploader=artists,
+            duration=int(e.get("duration_seconds") or 0),
+        ))
+    return tracks
+
+
+def _public_ytmusic():
+    """Return an unauthenticated YTMusic client (public data only)."""
+    try:
+        from ytmusicapi import YTMusic
+    except ImportError as exc:
+        raise DownloadError(
+            "ytmusicapi is not installed; run: pip install ytmusicapi"
+        ) from exc
+    return YTMusic()
+
+
+def _owner(author) -> str:
+    # ytmusicapi returns the author either as a string or a list of dicts
+    if isinstance(author, list):
+        return ", ".join(a.get("name", "") for a in author)
+    return author or ""
+
+
+def search_playlists(query: str, count: int = 5) -> list[dict]:
+    """Search public YouTube Music playlists by name (no auth needed).
+
+    Returns up to ``count`` dicts with keys: id, name, owner, track_count
+    (track_count may be None when YouTube does not report it).
+    """
+    yt = _public_ytmusic()
+    try:
+        results = yt.search(query, filter="playlists", limit=count) or []
+    except Exception as exc:
+        raise DownloadError(f"playlist search failed: {exc}") from exc
+    candidates = []
+    for r in results:
+        browse_id = r.get("browseId") or ""
+        # search results carry the playlist id with a "VL" prefix
+        pid = browse_id[2:] if browse_id.startswith("VL") else browse_id
+        if not pid:
+            continue
+        candidates.append({
+            "id": pid,
+            "name": r.get("title") or pid,
+            "owner": _owner(r.get("author")),
+            "track_count": r.get("itemCount"),
+        })
+        if len(candidates) >= count:
+            break
+    return candidates
+
+
+def playlist_tracks(playlist_id: str, limit: int = 50) -> list[Track]:
+    """Return up to ``limit`` tracks of a public playlist (no auth needed)."""
+    yt = _public_ytmusic()
+    try:
+        resp = yt.get_playlist(playlist_id, limit=limit)
+    except Exception as exc:
+        raise DownloadError(f"could not read playlist: {exc}") from exc
+    tracks = []
+    # get_playlist's limit is a batch minimum, so slice to the real cap
+    for e in (resp.get("tracks") or [])[:limit]:
+        vid = e.get("videoId")
+        if not vid:
+            continue  # unavailable/deleted entries have no videoId
+        artists = ", ".join(a.get("name", "") for a in e.get("artists") or [])
+        tracks.append(Track(
+            video_id=vid,
+            title=e.get("title") or vid,
             uploader=artists,
             duration=int(e.get("duration_seconds") or 0),
         ))

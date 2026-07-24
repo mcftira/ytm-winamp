@@ -105,6 +105,11 @@ def select_queries(count: int, shuffle: bool = True,
             note = f"local charts unavailable ({exc}); global hits only"
     n_local = min(len(local_queries), round(count * LOCAL_SHARE))
     global_pool = list(dict.fromkeys(TRACKS))  # dedup, keep order
+    # never queue the same song twice: local hits that are already in the
+    # global canon belong to the canon, not to the local share
+    global_keys = {t.lower() for t in global_pool}
+    local_queries = [q for q in local_queries if q.lower() not in global_keys]
+    n_local = min(n_local, len(local_queries))
     global_picks = rand.sample(global_pool, min(count - n_local, len(global_pool)))
     local_picks = rand.sample(local_queries, n_local) if n_local else []
     queries = global_picks + local_picks

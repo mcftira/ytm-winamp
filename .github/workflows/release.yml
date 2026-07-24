@@ -26,7 +26,7 @@ jobs:
         run: python -m pytest tests/ -q
 
       - name: Build single-file exe
-        run: pyinstaller --onefile --name ytm-winamp --collect-all yt_dlp --icon assets/icon.ico --noconfirm launcher.py
+        run: pyinstaller --onefile --name ytm-winamp --collect-all yt_dlp --collect-all pystray --collect-all ytmusicapi --add-data "docs/icon.png;docs" --icon assets/icon.ico --noconfirm launcher.py
 
       - name: Smoke test the exe
         run: dist/ytm-winamp.exe --version
@@ -38,7 +38,11 @@ jobs:
         run: choco install innosetup --no-progress -y
 
       - name: Build the installer wizard
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $version = "$env:TAG_NAME".TrimStart('v')
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer.iss
 
       - name: Publish GitHub release
         env:

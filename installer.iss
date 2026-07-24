@@ -3,7 +3,11 @@
 ; the portable tools, Winamp (via winget), shortcuts, and the theme.
 
 #define AppName "ytm-winamp"
+; Overridable from the command line: ISCC /DAppVersion=x.y.z installer.iss
+; (the release workflow passes the git tag with the leading v stripped).
+#ifndef AppVersion
 #define AppVersion "0.8.0"
+#endif
 #define AppPublisher "mcftira"
 #define AppURL "https://github.com/mcftira/ytm-winamp"
 
@@ -24,6 +28,8 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 SetupIconFile=assets\icon.ico
+WizardImageFile=assets\wizard_large.bmp
+WizardSmallImageFile=assets\wizard_small.bmp
 UninstallDisplayIcon={app}\ytm-winamp.exe
 LicenseFile=LICENSE
 VersionInfoVersion={#AppVersion}
@@ -38,7 +44,8 @@ Source: "dist\tools\ffmpeg.exe"; DestDir: "{%USERPROFILE}\.ytm-winamp\bin"; Flag
 
 [Icons]
 Name: "{group}\Play the era radio"; Filename: "{app}\ytm-winamp.exe"; Parameters: "era"; Comment: "Start the 1995-2005 hits radio in Winamp"
-Name: "{group}\ytm-winamp terminal"; Filename: "{app}\ytm-winamp.exe"; Comment: "All commands: play, search, liked, era, serve"
+Name: "{group}\Tray controller"; Filename: "{app}\ytm-winamp.exe"; Parameters: "tray"; Comment: "System-tray icon with playback controls"
+Name: "{group}\ytm-winamp terminal"; Filename: "{app}\ytm-winamp.exe"; Comment: "All commands: play, search, liked, era, mix, tray, serve"
 Name: "{autodesktop}\ytm-winamp era radio"; Filename: "{app}\ytm-winamp.exe"; Parameters: "era"; Tasks: desktopicon
 
 [Run]

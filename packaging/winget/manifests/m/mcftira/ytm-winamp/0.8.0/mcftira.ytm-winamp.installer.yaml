@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+PackageIdentifier: mcftira.ytm-winamp
+PackageVersion: 0.8.0
+InstallerType: inno
+Scope: user
+InstallModes:
+- interactive
+- silent
+InstallerSwitches:
+  Silent: /VERYSILENT /NORESTART
+  SilentWithProgress: /SILENT /NORESTART
+UpgradeBehavior: install
+ReleaseDate: 2026-07-24
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/mcftira/ytm-winamp/releases/download/v0.8.0/ytm-winamp-setup.exe
+  InstallerSha256: 25CCACF9E82847D9C884DC968E7684E81B9D75E27DCDCCFFA643C3DCD61A5232
+ManifestType: installer
+ManifestVersion: 1.10.0

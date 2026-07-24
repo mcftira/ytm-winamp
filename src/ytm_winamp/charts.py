@@ -24,31 +24,49 @@ MAX_LOCAL_QUERIES = 80
 USER_AGENT = "ytm-winamp (+https://github.com/mcftira/ytm-winamp)"
 
 # Verified Wikipedia page patterns for national number-one lists.
-# Add more countries here as the patterns are confirmed (404s are skipped).
+# Values are (wiki lang, (page title templates,)); templates are tried in
+# order until one yields hits (404s are skipped). Placeholders: {year},
+# {decade} ("1990s") and {country}. Decade and all-time list pages work too:
+# rows outside ERA_YEARS are filtered out while parsing.
 COUNTRY_SOURCES = {
-    "DE": ("en", "List of number-one hits of {year} (Germany)"),
-    "AT": ("en", "List of number-one hits of {year} (Austria)"),
-    "CH": ("en", "List of number-one hits of {year} (Switzerland)"),
-    "IT": ("en", "List of number-one hits of {year} (Italy)"),
-    "ES": ("en", "List of number-one singles of {year} (Spain)"),
-    "NL": ("en", "List of Dutch Top 40 number-one singles of {year}"),
-    "PL": ("en", "List of number-one hits of {year} (Poland)"),
-    "FR": ("en", "List of number-one hits of {year} (France)"),
-    "IE": ("en", "List of number-one singles of {year} (Ireland)"),
+    "DE": ("en", ("List of number-one hits of {year} (Germany)",)),
+    "AT": ("en", ("List of number-one hits of {year} (Austria)",)),
+    "CH": ("en", ("List of number-one hits of {year} (Switzerland)",)),
+    "IT": ("en", ("List of number-one hits of {year} (Italy)",)),
+    "ES": ("en", ("List of number-one singles of {year} (Spain)",)),
+    "NL": ("en", ("List of Dutch Top 40 number-one singles of {year}",)),
+    "FR": ("en", ("List of number-one hits of {year} (France)",)),
+    "IE": ("en", ("List of number-one singles of {year} (Ireland)",)),
+    "BE": ("en", ("Ultratop 40 number-one hits of {year}",)),
+    "DK": ("en", ("List of number-one hits of {year} (Denmark)",)),
+    "FI": ("en", ("List of number-one singles of {year} (Finland)",)),
+    "SE": ("en", ("List of number-one singles and albums in Sweden",)),
+    "NO": ("en", ("List of number-one songs in Norway",)),
+    "GB": ("en", ("List of UK singles chart number ones of the {decade}",)),
+    "AU": ("en", ("List of top 25 singles for {year} in Australia",)),
+    "NZ": ("en", ("List of number-one singles from the {decade} (New Zealand)",)),
+    "CA": ("en", ("List of number-one singles of {year} (Canada)",)),
+    "US": ("en", ("List of Billboard Hot 100 number ones of {year}",)),
+    "JP": ("en", ("List of Oricon number-one singles of {year}",)),
 }
 
 COUNTRY_NAMES = {
     "DE": "Germany", "AT": "Austria", "CH": "Switzerland", "IT": "Italy",
-    "ES": "Spain", "NL": "Netherlands", "PL": "Poland", "FR": "France",
-    "IE": "Ireland",
+    "ES": "Spain", "NL": "Netherlands", "FR": "France",
+    "IE": "Ireland", "BE": "Belgium", "DK": "Denmark", "FI": "Finland",
+    "SE": "Sweden", "NO": "Norway", "GB": "United Kingdom", "AU": "Australia",
+    "NZ": "New Zealand", "CA": "Canada", "US": "United States", "JP": "Japan",
 }
 
 _SONG_HEADERS = re.compile(
-    r"song|title|track|single|dal|szám|titel|canción|brano|titre|utwór|lied", re.I)
+    r"song|title|track|single|album|dal|szám|titel|canción|brano|titre"
+    r"|utwór|lied", re.I)
 _ARTIST_HEADERS = re.compile(
     r"artist|performer|interpret|előadó|artista|künstler|artiste|wykonawca", re.I)
-_REF_RE = re.compile(r"\[\d+\]|\[note\s*\d*\]", re.I)
+_REF_RE = re.compile(r"\[\s*\d+\s*\]|\[(?:note|no)\.?\s*\d*\]", re.I)
 _QUOTES_RE = re.compile(r"^[\"'„“”‚‘’]+|[\"'„“”‚‘’]+$")
+_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+_DECADE_RE = re.compile(r"\b((?:19|20)\d{2})s\b")
 
 
 def _get(url: str, timeout: int = 15) -> str | None:
@@ -92,33 +110,86 @@ def _clean(text: str) -> str:
     return " ".join(text.split())
 
 
-def parse_chart_page(html: str) -> list[tuple[str, str]]:
+def _header_cols(texts: list[str]) -> tuple[int, int] | None:
+    """(song col, artist col) when the row texts look like a chart header."""
+    song_col = next((i for i, h in enumerate(texts) if _SONG_HEADERS.search(h)), None)
+    artist_col = next((i for i, h in enumerate(texts) if _ARTIST_HEADERS.search(h)), None)
+    if song_col is None or artist_col is None or song_col == artist_col:
+        return None
+    return song_col, artist_col
+
+
+def _section_year(table) -> int | None:
+    """The single year a table's section heading names, if unambiguous.
+
+    Pages that split charts into one table per year ("1996", "2009") carry
+    the year in the heading, not in the date cells. Headings with a range
+    ("1995–2008") or no year return None and row-level checks decide.
+    """
+    heading = table.find_previous(["h2", "h3", "h4"])
+    if heading is None:
+        return None
+    years = {int(y) for y in _YEAR_RE.findall(heading.get_text(" "))}
+    return years.pop() if len(years) == 1 else None
+
+
+def _title_years(soup) -> set[int]:
+    """Years the page title scopes to ("...of 1998", "the 1990s").
+
+    Used to place rows that carry no year themselves: on a page dedicated to
+    in-range years they belong to the chart; on a page spanning out-of-range
+    years (decade/all-time lists) they cannot be placed and are dropped.
+    """
+    heading = soup.find("h1")
+    text = heading.get_text(" ") if heading else ""
+    years = {int(y) for y in _YEAR_RE.findall(text)}
+    for decade in _DECADE_RE.findall(text):
+        years.update(range(int(decade), int(decade) + 10))
+    return years
+
+
+def parse_chart_page(html: str, years: set[int] | None = None) -> list[tuple[str, str]]:
     """Extract (song, artist) pairs from a Wikipedia number-one list page.
 
-    Handles the common wikitable layouts: a header row naming the song and
-    artist columns, and cells left empty when the entry is unchanged from
-    the week above (forward-filled here).
+    Handles the common wikitable layouts: header rows naming the song and
+    artist columns are re-detected per row, so tables with a leading title
+    row ("Physical singles") or several stacked sections work; cells left
+    empty when the entry is unchanged from the week above are forward-filled.
+    When ``years`` is given, decade and all-time list pages stay usable:
+    tables under a single out-of-range year heading are skipped wholesale,
+    rows mentioning only out-of-range 4-digit years are dropped, and rows
+    without any year are kept only when the page title itself is scoped to
+    in-range years (or names no year at all).
     """
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "html.parser")
+    title_years = _title_years(soup) if years is not None else set()
     pairs: list[tuple[str, str]] = []
     for table in soup.select("table.wikitable"):
-        rows = table.find_all("tr")
-        if not rows:
+        section_year = _section_year(table) if years is not None else None
+        if section_year is not None and section_year not in years:
             continue
-        header = [c.get_text(" ", strip=True) for c in rows[0].find_all(["th", "td"])]
-        song_col = next((i for i, h in enumerate(header) if _SONG_HEADERS.search(h)), None)
-        artist_col = next((i for i, h in enumerate(header) if _ARTIST_HEADERS.search(h)), None)
-        if song_col is None or artist_col is None or song_col == artist_col:
-            continue
+        cols: tuple[int, int] | None = None
         last_song = last_artist = ""
-        for row in rows[1:]:
+        for row in table.find_all("tr"):
             cells = row.find_all(["td", "th"])
-            if len(cells) <= max(song_col, artist_col):
+            texts = [c.get_text(" ", strip=True) for c in cells]
+            new_cols = _header_cols(texts)
+            if new_cols is not None:  # a (sub-)header row: new column layout
+                cols = new_cols
+                last_song = last_artist = ""
                 continue
-            song = _clean(cells[song_col].get_text(" ", strip=True))
-            artist = _clean(cells[artist_col].get_text(" ", strip=True))
+            if cols is None or len(cells) <= max(cols):
+                continue
+            if years is not None and section_year is None:
+                row_years = {int(y) for y in _YEAR_RE.findall(" ".join(texts))}
+                if row_years and row_years.isdisjoint(years):
+                    continue
+                if not row_years and title_years and not title_years <= years:
+                    continue
+            song = _clean(texts[cols[0]])
+            artist = _clean(texts[cols[1]])
             if song:
                 last_song = song
             if artist:
@@ -142,7 +213,10 @@ def _chart_cache_path(cc: str) -> Path:
 def _patterns_for(cc: str, country_name: str | None) -> list[tuple[str, str]]:
     """(wiki lang, page title template) candidates for a country."""
     if cc in COUNTRY_SOURCES:
-        return [COUNTRY_SOURCES[cc]]
+        lang, templates = COUNTRY_SOURCES[cc]
+        if isinstance(templates, str):  # legacy single-template entries
+            templates = (templates,)
+        return [(lang, template) for template in templates]
     if country_name:
         return [
             ("en", "List of number-one hits of {year} ({country})"),
@@ -215,20 +289,24 @@ def fetch_chart_queries(cc: str, country_name: str | None = None,
         pass
     queries: list[str] = []
     seen: set[str] = set()
+    year_set = set(years)
+    seen_titles: set[str] = set()
     for lang, template in _patterns_for(cc, country_name):
         for year in years:
-            title = template.format(year=year, country=country_name or "")
+            title = template.format(year=year, decade=f"{year // 10 * 10}s",
+                                    country=country_name or "")
+            if title in seen_titles:  # decade/all-time pages repeat per year
+                continue
+            seen_titles.add(title)
             url = f"https://{lang}.wikipedia.org/wiki/{urllib.parse.quote(title)}"
             html = _get(url)
             if html is None or "Wikipedia does not have an article" in html:
                 continue
-            for song, artist in parse_chart_page(html):
+            for song, artist in parse_chart_page(html, years=year_set):
                 query = f"{artist} - {song}"
                 if query.lower() not in seen:
                     seen.add(query.lower())
                     queries.append(query)
-            if len(queries) >= MAX_LOCAL_QUERIES:
-                break
         if queries:  # a working pattern: stop trying alternatives
             break
     if not queries and cc in _BESPOKE_FETCHERS:
@@ -236,7 +314,11 @@ def fetch_chart_queries(cc: str, country_name: str | None = None,
             if query.lower() not in seen:
                 seen.add(query.lower())
                 queries.append(query)
-    queries = queries[:MAX_LOCAL_QUERIES]
+    if len(queries) > MAX_LOCAL_QUERIES:
+        # take an even spread so every era year keeps some hits (the lists
+        # are chronological; plain truncation would keep only the first years)
+        step = len(queries) / MAX_LOCAL_QUERIES
+        queries = [queries[int(i * step)] for i in range(MAX_LOCAL_QUERIES)]
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     _chart_cache_path(cc).write_text(
         json.dumps({"at": time.time(), "queries": queries}, ensure_ascii=False),
