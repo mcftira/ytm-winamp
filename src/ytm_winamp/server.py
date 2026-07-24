@@ -37,6 +37,9 @@ STALL_TIMEOUT = 45       # seconds without file growth before giving up
 FAIL_RETRY_AFTER = 120   # seconds before retrying a failed track
 ICY_METAINT = 8192       # bytes of MP3 between ICY metadata blocks
 
+# keep yt-dlp/ffmpeg from flashing console windows during playback
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+
 log = logging.getLogger("ytm-winamp")
 
 
@@ -161,11 +164,13 @@ class TrackCache:
             [find_tool("yt-dlp"), "-f", "bestaudio[ext=webm]/bestaudio",
              "--no-playlist", "--no-warnings", "-o", "-",
              f"https://www.youtube.com/watch?v={vid}"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            creationflags=_NO_WINDOW)
         ffmpeg = subprocess.Popen(
             [find_tool("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",
              "-i", "pipe:0", "-vn", "-f", "mp3", "-b:a", "192k", str(mp3)],
-            stdin=ytdlp.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdin=ytdlp.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=_NO_WINDOW)
         assert ytdlp.stdout is not None
         ytdlp.stdout.close()  # ffmpeg owns the read end
         ff_rc = ffmpeg.wait()

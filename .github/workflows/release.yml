@@ -26,12 +26,21 @@ jobs:
         run: python -m pytest tests/ -q
 
       - name: Build single-file exe
-        run: pyinstaller --onefile --name ytm-winamp --collect-all yt_dlp launcher.py
+        run: pyinstaller --onefile --name ytm-winamp --collect-all yt_dlp --icon assets/icon.ico --noconfirm launcher.py
 
       - name: Smoke test the exe
         run: dist/ytm-winamp.exe --version
 
+      - name: Download portable tools for the installer
+        run: python -c "from pathlib import Path; from ytm_winamp.bins import download_tool; download_tool('yt-dlp', dest_dir=Path('dist/tools')); download_tool('ffmpeg', dest_dir=Path('dist/tools'))"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer wizard
+        run: & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create ${{ github.ref_name }} dist/ytm-winamp.exe --generate-notes --verify-tag
+        run: gh release create ${{ github.ref_name }} dist/ytm-winamp.exe installer/ytm-winamp-setup.exe --generate-notes --verify-tag

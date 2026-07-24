@@ -51,10 +51,11 @@ def _download(url: str, dest: Path) -> None:
     tmp.replace(dest)
 
 
-def download_tool(name: str, progress=print) -> Path:
+def download_tool(name: str, progress=print, dest_dir: Path | None = None) -> Path:
     """Download a portable build of a tool into the local bin dir."""
-    LOCAL_BIN.mkdir(parents=True, exist_ok=True)
-    dest = local_tool_path(name)
+    target_dir = dest_dir or LOCAL_BIN
+    target_dir.mkdir(parents=True, exist_ok=True)
+    dest = target_dir / f"{name}.exe"
     if name == "yt-dlp":
         progress(f"  downloading yt-dlp ({YTDLP_URL})")
         _download(YTDLP_URL, dest)

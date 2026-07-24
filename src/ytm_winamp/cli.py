@@ -59,7 +59,7 @@ def _cmd_search(args) -> int:
 def _cmd_setup(args) -> int:
     from . import installer
 
-    return installer.run_setup()
+    return installer.run_setup(skin_only=args.skin_only)
 
 
 def _cmd_serve(args) -> int:
@@ -114,6 +114,8 @@ def main(argv=None) -> int:
 
     st = sub.add_parser("setup", help="first run: install Winamp and "
                                       "dependencies, set default theme")
+    st.add_argument("--skin-only", action="store_true",
+                    help="only set the Winamp theme (used by the installer)")
     st.set_defaults(func=_cmd_setup)
 
     s = sub.add_parser("search", help="list search results with their URLs")

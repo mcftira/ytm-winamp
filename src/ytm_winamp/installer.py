@@ -106,8 +106,11 @@ def ensure_skin(skin: str = DEFAULT_SKIN, ini_path: Path | None = None) -> str:
     return f"skin: set to {skin} in {path.name}"
 
 
-def run_setup() -> int:
+def run_setup(skin_only: bool = False) -> int:
     print("ytm-winamp setup")
+    if skin_only:
+        print(" ", ensure_skin())
+        return 0
     ok = True
     ok = ensure_winamp() and ok
     for name in _TOOLS:

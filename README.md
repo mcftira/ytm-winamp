@@ -39,9 +39,13 @@
 
 ## 🚀 Quick start
 
-1. **Download** [`ytm-winamp.exe`](https://github.com/mcftira/ytm-winamp/releases/latest/download/ytm-winamp.exe) — that's the whole install.
-2. **Run** `ytm-winamp setup` — installs Winamp via winget (one UAC prompt), fetches portable yt-dlp/ffmpeg into `%USERPROFILE%\.ytm-winamp\bin`, sets the default Winamp Modern theme.
-3. **Run** `ytm-winamp` — the era radio starts playing.
+1. **Download** [`ytm-winamp-setup.exe`](https://github.com/mcftira/ytm-winamp/releases/latest) and run it — a proper installer wizard: the app, Winamp (via winget), portable yt-dlp/ffmpeg, shortcuts, and the default Winamp Modern theme.
+2. Check **"Start the era radio"** on the finish page.
+3. That's it — use the desktop/Start-menu shortcut next time, or `ytm-winamp` from any terminal.
+
+Prefer portable? Grab the bare
+[`ytm-winamp.exe`](https://github.com/mcftira/ytm-winamp/releases/latest/download/ytm-winamp.exe)
+instead and run `ytm-winamp setup` once yourself.
 
 <details>
 <summary><b>Install from source instead</b></summary>

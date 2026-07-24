@@ -5,3 +5,4 @@ build/
 dist/
 *.log
 .pytest_cache/
+installer/
