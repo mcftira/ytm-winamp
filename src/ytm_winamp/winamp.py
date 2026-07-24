@@ -77,11 +77,17 @@ def write_playlist(tracks: list[Track], port: int = DEFAULT_PORT) -> Path:
     return Path(name)
 
 
-def prefetch(vids: list[str], port: int = DEFAULT_PORT) -> None:
+def prefetch(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
     """Ask the bridge to start downloading tracks; best-effort."""
+    # very long videos (mixes, compilations) are fetched on demand instead:
+    # background-prefetching one would starve the tracks behind it
+    payload = {
+        "vids": [t.video_id for t in tracks if not t.duration or t.duration <= 900],
+        "titles": {t.video_id: t.display for t in tracks},
+    }
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        conn.request("POST", "/prefetch", body=json.dumps(vids),
+        conn.request("POST", "/prefetch", body=json.dumps(payload),
                      headers={"Content-Type": "application/json"})
         conn.getresponse().read()
         conn.close()
@@ -93,8 +99,6 @@ def play(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
     if not tracks:
         raise WinampError("nothing to play")
     ensure_server(port)
-    # very long videos (mixes, compilations) are fetched on demand instead:
-    # background-prefetching one would starve the tracks behind it
-    prefetch([t.video_id for t in tracks if not t.duration or t.duration <= 900], port)
+    prefetch(tracks, port)
     playlist = write_playlist(tracks, port)
     subprocess.Popen([str(find_winamp()), str(playlist)])

@@ -5,7 +5,7 @@ import pytest
 
 from ytm_winamp import server
 from ytm_winamp.resolver import DownloadError, Track, is_url, liked_songs
-from ytm_winamp.server import TrackCache
+from ytm_winamp.server import TrackCache, icy_block
 from ytm_winamp.winamp import write_playlist
 
 
@@ -97,3 +97,21 @@ def test_cache_eviction_keeps_newest(tmp_path):
 def test_liked_songs_missing_auth_file(tmp_path):
     with pytest.raises(DownloadError, match="auth not found"):
         liked_songs(auth=str(tmp_path / "nope.json"))
+
+
+def test_icy_block_empty():
+    assert icy_block(None) == b"\x00"
+
+
+def test_icy_block_title():
+    block = icy_block("Artist - Title")
+    assert len(block) % 16 == 1  # 1 length byte + 16-byte-aligned payload
+    assert block[0] == (len(block) - 1) // 16
+    assert b"StreamTitle='Artist - Title';" in block
+
+
+def test_cache_titles(tmp_path):
+    c = TrackCache(tmp_path, start_worker=False)
+    assert c.title_for("abc") == "abc"  # falls back to the video id
+    c.set_titles({"abc": "A - B"})
+    assert c.title_for("abc") == "A - B"

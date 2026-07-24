@@ -5,6 +5,10 @@ its HTTP client), so this server fetches audio with yt-dlp, transcodes it to
 MP3 with ffmpeg, and caches tracks on disk. Upcoming tracks are prefetched in
 the background, so switching songs in Winamp starts from the cache instantly
 instead of waiting for a cold resolve on every track change.
+
+Track titles are injected into the stream as ICY (SHOUTcast-style) metadata
+when the player asks for it, so Winamp shows "Artist - Title" instead of the
+bare video id once a stream connects.
 """
 from __future__ import annotations
 
@@ -30,12 +34,23 @@ PREFETCH_AHEAD = 12      # how many queued tracks to download ahead
 START_TIMEOUT = 30       # seconds to wait for a download's first bytes
 STALL_TIMEOUT = 45       # seconds without file growth before giving up
 FAIL_RETRY_AFTER = 120   # seconds before retrying a failed track
+ICY_METAINT = 8192       # bytes of MP3 between ICY metadata blocks
 
 log = logging.getLogger("ytm-winamp")
 
 
+def icy_block(title: str | None) -> bytes:
+    """One ICY metadata block; empty blocks are a single zero byte."""
+    if not title:
+        return b"\x00"
+    meta = f"StreamTitle='{title}';".encode("utf-8", errors="replace")
+    pad = 16 - (len(meta) % 16)
+    meta += b"\x00" * pad
+    return bytes([len(meta) // 16]) + meta
+
+
 class TrackCache:
-    """Downloads tracks to disk in a single background worker thread.
+    """Downloads tracks to disk in the background; serves files as they grow.
 
     A track is "ready" when its ``<vid>.mp3`` is fully written and marked with
     an empty ``<vid>.done`` file. The marker avoids renaming files that
@@ -49,6 +64,7 @@ class TrackCache:
         self._downloading: set[str] = set()
         self._failed: dict[str, float] = {}
         self._queue: list[str] = []
+        self._titles: dict[str, str] = {}
         self._wake = threading.Event()
         if start_worker:
             # two workers so one very long download (a mix, a compilation)
@@ -69,6 +85,18 @@ class TrackCache:
         with self._lock:
             ts = self._failed.get(vid, 0.0)
         return time.time() - ts < FAIL_RETRY_AFTER
+
+    def in_progress(self, vid: str) -> bool:
+        with self._lock:
+            return vid in self._downloading or vid in self._queue
+
+    def set_titles(self, titles: dict[str, str]) -> None:
+        with self._lock:
+            self._titles.update(titles)
+
+    def title_for(self, vid: str) -> str:
+        with self._lock:
+            return self._titles.get(vid, vid)
 
     def prefetch(self, vids: list[str]) -> None:
         """Queue tracks for background download, most important first."""
@@ -110,10 +138,6 @@ class TrackCache:
                 finally:
                     with self._lock:
                         self._downloading.discard(vid)
-
-    def in_progress(self, vid: str) -> bool:
-        with self._lock:
-            return vid in self._downloading or vid in self._queue
 
     def _download(self, vid: str) -> None:
         for attempt in (1, 2):  # yt-dlp fails transiently; one retry helps
@@ -168,7 +192,7 @@ class TrackCache:
 
 class BridgeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
-    server_version = "ytm-winamp/0.3"
+    server_version = "ytm-winamp/0.4"
 
     def log_message(self, fmt, *args):  # route access logs through logging
         log.info("%s - %s", self.address_string(), fmt % args)
@@ -205,14 +229,24 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
-            vids = json.loads(self.rfile.read(length) or b"[]")
+            data = json.loads(self.rfile.read(length) or b"[]")
+            if isinstance(data, list):  # legacy: bare list of video ids
+                vids, titles = data, {}
+            else:
+                vids = data["vids"]
+                titles = data.get("titles") or {}
             if not isinstance(vids, list):
                 raise ValueError
-        except ValueError:
-            self._text(400, "expected a JSON list of video ids")
+        except (ValueError, AttributeError, TypeError):
+            self._text(400, "expected a JSON list of video ids or "
+                            '{"vids": [...], "titles": {...}}')
             return
+        self.cache.set_titles({str(k): str(v) for k, v in titles.items()})
         self.cache.prefetch([str(v) for v in vids])
         self._text(202, "queued")
+
+    def _wants_icy(self) -> bool:
+        return self.headers.get("Icy-MetaData") in ("1", "yes")
 
     def _stream(self, vid: str) -> None:
         cache = self.cache
@@ -234,32 +268,52 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self._text(504, "timed out starting track")
                 return
             time.sleep(0.25)
-        log.info("streaming %s to %s", vid, self.client_address)
+        title = cache.title_for(vid).replace("'", " ")
+        icy = self._wants_icy()
+        log.info("streaming %s (%s) to %s%s", vid, title, self.client_address,
+                 " [icy]" if icy else "")
         self.send_response(200)
         self.send_header("Content-Type", "audio/mpeg")
         self.send_header("Cache-Control", "no-store")
-        if cache.is_ready(vid):  # complete file: Winamp gets a real length
+        if icy:
+            self.send_header("icy-metaint", str(ICY_METAINT))
+            self.send_header("icy-br", "192")
+            self.send_header("icy-name", title)
+            # no Content-Length: interleaved metadata blocks shift the total
+        elif cache.is_ready(vid):  # complete file: Winamp gets a real length
             self.send_header("Content-Length", str(mp3.stat().st_size))
         self.end_headers()
         try:
-            with open(mp3, "rb") as f:
-                last_growth = time.time()
-                while True:
-                    chunk = f.read(64 * 1024)
-                    if chunk:
-                        self.wfile.write(chunk)
-                        last_growth = time.time()
-                        continue
-                    if cache.is_ready(vid):  # fully cached and fully sent
-                        break
-                    if time.time() - last_growth > STALL_TIMEOUT:
-                        log.warning("stall while serving %s", vid)
-                        break
-                    time.sleep(0.2)  # wait for the download to append more
+            self._pump(vid, mp3, icy, title)
         except OSError:
             # broken pipe / reset / abort: Winamp disconnects and reconnects
             # while buffering, which is normal for streaming clients
             log.info("client disconnected during %s", vid)
+
+    def _pump(self, vid: str, mp3: Path, icy: bool, title: str) -> None:
+        with open(mp3, "rb") as f:
+            last_growth = time.time()
+            since_meta = 0
+            sent_title = False
+            while True:
+                want = (ICY_METAINT - since_meta) if icy else 64 * 1024
+                chunk = f.read(min(64 * 1024, want))
+                if chunk:
+                    self.wfile.write(chunk)
+                    last_growth = time.time()
+                    if icy:
+                        since_meta += len(chunk)
+                        if since_meta == ICY_METAINT:
+                            self.wfile.write(icy_block(None if sent_title else title))
+                            sent_title = True
+                            since_meta = 0
+                    continue
+                if self.cache.is_ready(vid):  # fully cached and fully sent
+                    break
+                if time.time() - last_growth > STALL_TIMEOUT:
+                    log.warning("stall while serving %s", vid)
+                    break
+                time.sleep(0.2)  # wait for the download to append more
 
 
 class BridgeServer(ThreadingHTTPServer):

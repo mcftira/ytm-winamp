@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ytm-winamp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Play YouTube Music tracks and playlists in classic Winamp via a local streaming bridge"
 readme = "README.md"
 requires-python = ">=3.10"
