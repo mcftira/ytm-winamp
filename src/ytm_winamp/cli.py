@@ -56,6 +56,12 @@ def _cmd_search(args) -> int:
     return 0
 
 
+def _cmd_setup(args) -> int:
+    from . import installer
+
+    return installer.run_setup()
+
+
 def _cmd_serve(args) -> int:
     from .server import run
 
@@ -105,6 +111,10 @@ def main(argv=None) -> int:
     lk.add_argument("--shuffle", action="store_true", help="shuffle before queueing")
     lk.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
     lk.set_defaults(func=_cmd_liked)
+
+    st = sub.add_parser("setup", help="first run: install Winamp and "
+                                      "dependencies, set default theme")
+    st.set_defaults(func=_cmd_setup)
 
     s = sub.add_parser("search", help="list search results with their URLs")
     s.add_argument("query", nargs="+")

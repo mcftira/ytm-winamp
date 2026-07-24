@@ -26,13 +26,18 @@ URLs are resolved when a track is downloaded, not when it is enqueued.
 - optional: [`ytmusicapi`](https://ytmusicapi.readthedocs.io) for playing
   your YouTube Music liked songs (`pip install .[liked]`)
 
-## Install
+## Quick start
 
 ```sh
 pipx install .
-pipx inject ytm-winamp ytmusicapi   # optional, for liked-songs support
-# or: pip install .[liked]
+ytm-winamp setup    # installs Winamp, yt-dlp and ffmpeg via winget,
+                    # and sets the default Winamp Modern theme
+ytm-winamp          # start the era radio
 ```
+
+Or by hand: `pip install .[liked]` plus the requirements below, and Winamp
+from [winamp.com](https://www.winamp.com/player/). The `setup` command is
+idempotent — anything already installed is left alone.
 
 ## Usage
 
@@ -63,6 +68,9 @@ ytm-winamp liked --shuffle
 
 # list search results with URLs to pick from
 ytm-winamp search modern talking -n 10
+
+# first run on a new machine: install Winamp + dependencies, set theme
+ytm-winamp setup
 
 # run the bridge in the foreground (debugging)
 ytm-winamp serve

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from ytm_winamp import charts, era, server
+from ytm_winamp import charts, era, installer, server
 from ytm_winamp.resolver import DownloadError, Track, is_url, liked_songs
 from ytm_winamp.server import TrackCache, icy_block
 from ytm_winamp.winamp import write_playlist
@@ -89,6 +89,29 @@ SLAGER_HTML = """
 def test_parse_slagerlistak_page():
     pairs = charts.parse_slagerlistak_page(SLAGER_HTML)
     assert pairs == [("White Flag", "Dido"), ("Híd a folyót", "T.N.T.")]
+
+
+def test_ensure_skin_updates_existing(tmp_path):
+    ini = tmp_path / "winamp.ini"
+    ini.write_text("[Winamp]\nuid=x\nskin=Winamp Classic\n[Other]\nfoo=1\n",
+                   encoding="utf-8")
+    installer.ensure_skin("Winamp Modern", ini)
+    text = ini.read_text(encoding="utf-8")
+    assert "skin=Winamp Modern" in text
+    assert "Classic" not in text
+    assert "uid=x" in text and "foo=1" in text
+
+
+def test_ensure_skin_inserts_when_missing(tmp_path):
+    ini = tmp_path / "winamp.ini"
+    ini.write_text("[Winamp]\nuid=x\n", encoding="utf-8")
+    installer.ensure_skin("Winamp Modern", ini)
+    assert ini.read_text(encoding="utf-8").splitlines()[1] == "skin=Winamp Modern"
+
+
+def test_ensure_skin_without_ini(tmp_path):
+    msg = installer.ensure_skin("Winamp Modern", tmp_path / "nope.ini")
+    assert "no winamp.ini yet" in msg
 
 
 def test_track_display():
