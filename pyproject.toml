@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ytm-winamp"
+version = "0.1.0"
+description = "Play YouTube Music tracks and playlists in classic Winamp via a local streaming bridge"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Gabor Pikats", email = "mcftira@users.noreply.github.com" }]
+keywords = ["winamp", "youtube-music", "youtube", "yt-dlp", "streaming", "bridge"]
+classifiers = [
+    "Environment :: Win32 (MS Windows)",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = ["yt-dlp>=2024.1.1"]
+
+[project.scripts]
+ytm-winamp = "ytm_winamp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mcftira/ytm-winamp"
+
+[tool.setuptools.packages.find]
+where = ["src"]
