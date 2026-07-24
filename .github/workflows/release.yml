@@ -38,7 +38,7 @@ jobs:
         run: choco install innosetup --no-progress -y
 
       - name: Build the installer wizard
-        run: & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
 
       - name: Publish GitHub release
         env:
