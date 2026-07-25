@@ -102,10 +102,49 @@ def prefetch(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
         pass
 
 
+_WM_USER = 0x0400
+_IPC_GETLISTLENGTH = 124
+
+
+def _find_winamp_window() -> int:
+    """Handle of Winamp's IPC window, or 0 when Winamp is not running."""
+    import ctypes
+
+    return ctypes.windll.user32.FindWindowW("Winamp v1.x", None) or 0
+
+
+def _playlist_length(hwnd: int) -> int:
+    import ctypes
+
+    return int(ctypes.windll.user32.SendMessageW(hwnd, _WM_USER, 0, _IPC_GETLISTLENGTH))
+
+
 def play(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
     if not tracks:
         raise WinampError("nothing to play")
     ensure_server(port)
     prefetch(tracks, port)
     playlist = write_playlist(tracks, port)
-    subprocess.Popen([str(find_winamp()), str(playlist)])
+    exe = find_winamp()
+    was_running = _find_winamp_window() != 0
+    subprocess.Popen([str(exe), str(playlist)])
+    if not was_running:
+        _await_playlist_load(exe, playlist, expected=len(tracks))
+
+
+def _await_playlist_load(exe: Path, playlist: Path, expected: int) -> None:
+    """Verify a freshly launched Winamp actually loaded the playlist.
+
+    A never-before-run Winamp spends a while in first-run initialization and
+    silently drops the command-line playlist handoff; retry the launch once
+    when the playlist still has not shown up after a grace period.
+    """
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        hwnd = _find_winamp_window()
+        if hwnd and _playlist_length(hwnd) >= expected:
+            return
+        time.sleep(2)
+    hwnd = _find_winamp_window()
+    if not hwnd or _playlist_length(hwnd) < expected:
+        subprocess.Popen([str(exe), str(playlist)])
