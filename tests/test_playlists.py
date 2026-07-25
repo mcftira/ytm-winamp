@@ -158,7 +158,7 @@ def test_mix_queues_top_playlist(monkeypatch, capsys):
 
     played = {}
 
-    def fake_play(tracks, port=0):
+    def fake_play(tracks, port=0, radio=None):
         played["tracks"] = tracks
 
     monkeypatch.setattr(resolver, "playlist_tracks", fake_playlist_tracks)

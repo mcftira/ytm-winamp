@@ -233,6 +233,92 @@ class TrackCache:
             log.info("evicted %s", f.stem)
 
 
+class RadioDirector:
+    """Keeps an era-radio Winamp fed: extends the playlist near its end.
+
+    The CLI hands over a recipe (country/local plus the queries used so
+    far) via the /prefetch payload; from then on this watcher appends a
+    fresh batch of era tracks whenever Winamp is about to run out, never
+    repeating a query it already queued.
+    """
+
+    EXTEND_AT = 3   # extend when this many tracks are left
+    BATCH = 12      # how many new tracks per extension
+    INTERVAL = 10   # seconds between playlist checks
+
+    def __init__(self, cache: TrackCache, port: int, start_thread: bool = True):
+        self.cache = cache
+        self.port = port
+        self.recipe: dict | None = None
+        self.used: set[str] = set()
+        self._wake = threading.Event()
+        if start_thread:
+            self._thread = threading.Thread(target=self._watch, daemon=True)
+            self._thread.start()
+
+    def configure(self, recipe: dict, used_queries: list[str]) -> None:
+        """Start a fresh radio session (a new play command resets state)."""
+        self.recipe = recipe
+        self.used = {q.lower() for q in used_queries}
+        self._wake.set()
+
+    def _winamp_state(self) -> tuple[int, int, int]:
+        """(hwnd, position, playlist length); hwnd 0 = Winamp not running."""
+        import ctypes
+
+        u = ctypes.windll.user32
+        hwnd = u.FindWindowW("Winamp v1.x", None) or 0
+        if not hwnd:
+            return 0, 0, 0
+        length = int(u.SendMessageW(hwnd, 0x0400, 0, 124))
+        pos = int(u.SendMessageW(hwnd, 0x0400, 0, 125))
+        return hwnd, pos, length
+
+    def _should_extend(self, length: int, pos: int) -> bool:
+        return length > 0 and length - pos <= self.EXTEND_AT
+
+    def _next_batch(self) -> list:
+        from . import era
+
+        queries, _note = era.select_queries(
+            count=self.BATCH,
+            country=self.recipe.get("country") if self.recipe else None,
+            local=self.recipe.get("local", True) if self.recipe else True,
+            exclude=set(self.used))
+        tracks = era.resolve_queries(queries)
+        self.used |= {q.lower() for q in queries}
+        return tracks
+
+    def _enqueue(self, track) -> None:
+        from . import winamp as _winamp  # lazy: winamp imports this module
+
+        url = f"http://127.0.0.1:{self.port}/stream/{track.video_id}.mp3"
+        self.cache.set_titles({track.video_id: track.display})
+        self.cache.ensure(track.video_id)
+        subprocess.Popen([str(_winamp.find_winamp()), "/ADD", url],
+                         creationflags=_NO_WINDOW)
+
+    def _maybe_extend(self) -> None:
+        hwnd, pos, length = self._winamp_state()
+        if not hwnd or not self._should_extend(length, pos):
+            return
+        log.info("radio: playlist nearly done (%d/%d), mixing a fresh batch",
+                 pos, length)
+        for track in self._next_batch():
+            self._enqueue(track)
+
+    def _watch(self) -> None:
+        while True:
+            self._wake.wait(self.INTERVAL)
+            self._wake.clear()
+            if not self.recipe:
+                continue
+            try:
+                self._maybe_extend()
+            except Exception:
+                log.exception("radio: extension failed")
+
+
 class BridgeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
     server_version = "ytm-winamp/0.4"
@@ -286,6 +372,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return
         self.cache.set_titles({str(k): str(v) for k, v in titles.items()})
         self.cache.prefetch([str(v) for v in vids])
+        radio = data.get("radio") if isinstance(data, dict) else None
+        if radio and hasattr(self.server, "radio"):
+            self.server.radio.configure(radio, radio.get("used") or [])
         self._text(202, "queued")
 
     def _wants_icy(self) -> bool:
@@ -422,6 +511,7 @@ def run(port: int = DEFAULT_PORT) -> None:
             raise SystemExit(f"error: {tool!r} not found; run: ytm-winamp setup")
     server = BridgeServer(("127.0.0.1", port), BridgeHandler)
     server.cache = TrackCache()
+    server.radio = RadioDirector(server.cache, port)
     log.info("ytm-winamp bridge listening on http://127.0.0.1:%d (cache: %s)",
              port, server.cache.dir)
     try:

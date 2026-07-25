@@ -5,7 +5,7 @@ from ytm_winamp.resolver import Track
 
 def _common_mocks(monkeypatch, tmp_path):
     monkeypatch.setattr(w, "ensure_server", lambda port: None)
-    monkeypatch.setattr(w, "prefetch", lambda tracks, port: None)
+    monkeypatch.setattr(w, "prefetch", lambda tracks, port, radio=None: None)
     monkeypatch.setattr(w, "find_winamp", lambda: tmp_path / "winamp.exe")
     monkeypatch.setattr(w, "write_playlist", lambda tracks, port: tmp_path / "pl.m3u8")
     launches = []

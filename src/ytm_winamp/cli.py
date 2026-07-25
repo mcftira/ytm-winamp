@@ -8,11 +8,11 @@ import sys
 from . import __version__, era, resolver, winamp
 
 
-def _play_tracks(tracks, port: int) -> int:
+def _play_tracks(tracks, port: int, radio: dict | None = None) -> int:
     if not tracks:
         print("no tracks found", file=sys.stderr)
         return 1
-    winamp.play(tracks, port=port)
+    winamp.play(tracks, port=port, radio=radio)
     if len(tracks) == 1:
         print(f"playing in Winamp: {tracks[0].display}")
     else:
@@ -33,10 +33,18 @@ def _cmd_play(args) -> int:
 
 def _cmd_era(args) -> int:
     print("resolving Winamp-era tracks...", file=sys.stderr)
-    tracks, note = era.era_tracks(count=args.count, shuffle=not args.no_shuffle,
-                                  country=args.country, local=not args.global_only)
+    queries, note = era.select_queries(count=args.count,
+                                       shuffle=not args.no_shuffle,
+                                       country=args.country,
+                                       local=not args.global_only)
+    tracks = era.resolve_queries(queries)
     print(f"era radio: {note}", file=sys.stderr)
-    return _play_tracks(tracks, args.port)
+    # the bridge keeps feeding the playlist fresh batches forever
+    radio = None
+    if not args.no_radio:
+        radio = {"country": args.country, "local": not args.global_only,
+                 "used": queries}
+    return _play_tracks(tracks, args.port, radio=radio)
 
 
 def _cmd_liked(args) -> int:
@@ -118,6 +126,9 @@ def main(argv=None) -> int:
                         "(code or name; default: auto-detect from your IP)")
     e.add_argument("--global-only", action="store_true",
                    help="skip local charts, play the global hit parade only")
+    e.add_argument("--no-radio", action="store_true",
+                   help="queue a fixed set of tracks instead of a "
+                        "never-ending radio (default: never-ending)")
     e.add_argument("--port", type=int, default=winamp.DEFAULT_PORT)
     e.set_defaults(func=_cmd_era)
 

@@ -84,7 +84,8 @@ def write_playlist(tracks: list[Track], port: int = DEFAULT_PORT) -> Path:
     return Path(name)
 
 
-def prefetch(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
+def prefetch(tracks: list[Track], port: int = DEFAULT_PORT,
+             radio: dict | None = None) -> None:
     """Ask the bridge to start downloading tracks; best-effort."""
     # very long videos (mixes, compilations) are fetched on demand instead:
     # background-prefetching one would starve the tracks behind it
@@ -92,6 +93,8 @@ def prefetch(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
         "vids": [t.video_id for t in tracks if not t.duration or t.duration <= 900],
         "titles": {t.video_id: t.display for t in tracks},
     }
+    if radio:
+        payload["radio"] = radio
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         conn.request("POST", "/prefetch", body=json.dumps(payload),
@@ -119,11 +122,12 @@ def _playlist_length(hwnd: int) -> int:
     return int(ctypes.windll.user32.SendMessageW(hwnd, _WM_USER, 0, _IPC_GETLISTLENGTH))
 
 
-def play(tracks: list[Track], port: int = DEFAULT_PORT) -> None:
+def play(tracks: list[Track], port: int = DEFAULT_PORT,
+         radio: dict | None = None) -> None:
     if not tracks:
         raise WinampError("nothing to play")
     ensure_server(port)
-    prefetch(tracks, port)
+    prefetch(tracks, port, radio=radio)
     playlist = write_playlist(tracks, port)
     exe = find_winamp()
     was_running = _find_winamp_window() != 0

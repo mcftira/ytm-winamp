@@ -28,7 +28,7 @@
 
 | | |
 | --- | --- |
-| 📻 **Winamp-era radio** | One command queues a shuffled 1995–2005 hit parade — Darude, Eiffel 65, Zombie Nation, the Vengaboys… |
+| 📻 **Never-ending era radio** | One command starts a shuffled 1995–2005 hit parade that **refills itself** — the bridge watches the playlist and mixes in fresh tracks before you run out, never repeating a song |
 | 🌍 **Localized to your country** | Your IP's country is auto-detected and ~40% of the queue is that country's **actual number-one hits** of the era — fetched from real chart archives, never guessed |
 | ⚡ **Snappy controls** | Upcoming tracks are prefetched and cached to disk; pressing **next** starts the next song in a fraction of a second |
 | 🏷️ **Real titles in Winamp** | ICY (SHOUTcast-style) metadata, so the title bar and playlist show `Artist – Title` like a proper radio |
@@ -66,10 +66,12 @@ already installed is detected and left alone.
 
 ## 📻 The era radio, localized
 
-Bare `ytm-winamp` (or `ytm-winamp era`) builds a radio queue of Winamp-era
-hits, roughly 1995–2005. About 60% is the worldwide canon that was on every
-playlist everywhere; the other 40% comes from **your own country's charts of
-those years**.
+Bare `ytm-winamp` (or `ytm-winamp era`) starts a **never-ending** radio of
+Winamp-era hits, roughly 1995–2005. The bridge watches Winamp's playlist
+position and appends a fresh batch of tracks before the queue runs out —
+with no repeats. About 60% is the worldwide canon that was on every
+playlist everywhere; the other 40% comes from **your own country's charts
+of those years**. Want a fixed queue instead? `ytm-winamp era --no-radio`.
 
 Local chart data sources:
 
@@ -112,7 +114,7 @@ YouTube ───────────────▶ yt-dlp ──▶ ffmpeg
 | Command | What it does |
 | --- | --- |
 | `ytm-winamp` | The era radio (same as `era`) |
-| `ytm-winamp era [--country X] [--global-only] [-n N]` | Era hits, optionally localized |
+| `ytm-winamp era [--country X] [--global-only] [--no-radio] [-n N]` | Never-ending era radio, optionally localized |
 | `ytm-winamp play <query or URL> [-n N]` | Search, video, or whole playlist |
 | `ytm-winamp mix <name> [--list] [-n N]` | Queue a public YouTube Music playlist found by name |
 | `ytm-winamp tray` | System-tray controller (now playing, playback controls) |

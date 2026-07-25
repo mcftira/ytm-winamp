@@ -76,13 +76,17 @@ LOCAL_SHARE = 0.4  # fraction of the queue filled with the user's local hits
 
 def select_queries(count: int, shuffle: bool = True,
                    country: str | None = None, local: bool = True,
-                   rng: random.Random | None = None) -> tuple[list[str], str]:
+                   rng: random.Random | None = None,
+                   exclude: set[str] | None = None) -> tuple[list[str], str]:
     """Pick era search queries: a global core plus local number-one hits.
 
     Returns (queries, note) where note describes the localization outcome
-    for the user, e.g. which country's charts were mixed in.
+    for the user, e.g. which country's charts were mixed in. ``exclude``
+    holds already-used queries (case-insensitive) so a never-ending radio
+    does not repeat itself.
     """
     rand = rng or random
+    excluded = {q.lower() for q in (exclude or set())}
     local_queries: list[str] = []
     note = "global hits only"
     if local:
@@ -104,11 +108,13 @@ def select_queries(count: int, shuffle: bool = True,
         except Exception as exc:  # localization must never sink the radio
             note = f"local charts unavailable ({exc}); global hits only"
     n_local = min(len(local_queries), round(count * LOCAL_SHARE))
-    global_pool = list(dict.fromkeys(TRACKS))  # dedup, keep order
+    global_pool = [t for t in dict.fromkeys(TRACKS)  # dedup, keep order
+                   if t.lower() not in excluded]
     # never queue the same song twice: local hits that are already in the
     # global canon belong to the canon, not to the local share
     global_keys = {t.lower() for t in global_pool}
-    local_queries = [q for q in local_queries if q.lower() not in global_keys]
+    local_queries = [q for q in local_queries
+                     if q.lower() not in global_keys and q.lower() not in excluded]
     n_local = min(n_local, len(local_queries))
     global_picks = rand.sample(global_pool, min(count - n_local, len(global_pool)))
     local_picks = rand.sample(local_queries, n_local) if n_local else []
@@ -143,12 +149,9 @@ def _resolve(query: str):
     return query, None
 
 
-def era_tracks(count: int = 25, shuffle: bool = True,
-               country: str | None = None, local: bool = True,
-               cache_path: Path = ERA_CACHE_PATH) -> tuple[list[Track], str]:
-    """Resolve ``count`` era tracks; the first run pays one search per track."""
-    queries, note = select_queries(count, shuffle=shuffle,
-                                   country=country, local=local)
+def resolve_queries(queries: list[str],
+                    cache_path: Path = ERA_CACHE_PATH) -> list[Track]:
+    """Resolve "Artist - Title" queries to playable tracks (cached a week)."""
     cache = _load_cache(cache_path)
     missing = [q for q in queries if q not in cache]
     if missing:
@@ -173,4 +176,15 @@ def era_tracks(count: int = 25, shuffle: bool = True,
                 uploader=entry.get("uploader", ""),
                 duration=int(entry.get("duration") or 0),
             ))
+    return tracks
+
+
+def era_tracks(count: int = 25, shuffle: bool = True,
+               country: str | None = None, local: bool = True,
+               cache_path: Path = ERA_CACHE_PATH,
+               exclude: set[str] | None = None) -> tuple[list[Track], str]:
+    """Resolve ``count`` era tracks; the first run pays one search per track."""
+    queries, note = select_queries(count, shuffle=shuffle,
+                                   country=country, local=local, exclude=exclude)
+    tracks = resolve_queries(queries, cache_path)
     return tracks, note
